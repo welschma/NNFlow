@@ -458,7 +458,7 @@ class BinaryMLP:
         plt.savefig(self.savedir + '/' + plt_name + '.eps')
         plt.clf()
 
-    def predict_prob(self, data):
+    def classify(self, data):
         """Predict probability of a new feauture to belong to the signal.
 
         Arguments:
