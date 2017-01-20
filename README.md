@@ -1,9 +1,10 @@
-# NNFlow
+# NNFlow (Work In Progress)
 A simple interface for Google's TensorFlow 
 
 ## Basic Workflow
 ### Converting Root nTuples into numpy arrays
 NNFlow provides a function, based on root-numpy, for converting Root nTuples into numpy arrays.
+
 Example:
 ```
 from NNFlow.preprocessing import convert_root_to_array
@@ -18,10 +19,12 @@ convert_root_to_array(save_to, name, ntuples, tree=my_tree, branches=my_branches
 ```
 If there is only one TTree in the nTuple you do not have to provide the name of the tree which should be converted.
 If you want to convert all branches of a tree, do not provide a branchlist.
-NOTE: The array the data is saved to is of type np.structure_array (https://docs.scipy.org/doc/numpy/user/basics.rec.html)
+
+NOTE: The array the data is saved to is of type np.structure_array (https://docs.scipy.org/doc/numpy/user/basics.rec.html).
 
 ### Preprocess numpy arrays
 Once you've converted the nTuples to numpy arrays, you have do some other preprocessing steps, like getting some specific branches from the array if you've converted everything in the nTuple.
+
 Example:
 ```
 from NNFlow.preprocessing import GetBranches
@@ -37,8 +40,9 @@ gb.process(ttH, ttbarSL, 'even')
 ```
 This script gets the branches defined in the ```branchlist.txt``` file (one branch name in every line) from the structured array and saves them into a normal 2D np.ndarray.
 If a branch is vector like then you should check if the branch is included in the list in line 116 in file [NNFlow/preprocessing](NNFlow/preprocessing.py) (checking for vector like data is not automated yet).
-The signal (ttH) and backgroudn (ttbarSL) are combined into one array.
-Labels for signal (1) and background (0) are added in the first column, the weights are added in the last column.
+
+The signal (ttH) and background (ttbarSL) are combined into one array.
+Labels for signal (1) and background (0) are added in the first column, the event weights are added in the last column.
 The event weights are normed to sum 1 respectively for signal and background.
 The directory 'my_variables/category' is created and the array 'even.npy' is save in it.
 

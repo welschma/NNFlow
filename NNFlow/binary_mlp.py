@@ -16,39 +16,31 @@ class BinaryMLP:
     Makes probability predictions on a set of features (A 1-dimensional
     numpy vector belonging either to the 'signal' or the 'background'.
 
+    Arguments:
+    ----------------
+    n_features (int) :
+    The number of input features.
+    h_layers (list):
+    A list representing the hidden layers. Each entry gives the number of
+    neurons in the equivalent layer.
+    savedir (str) :
+    Path to the directory the model should be saved in.
+    activation (str) :
+    Default is 'relu'. Activation function used in the model. Also possible 
+    is 'tanh' or 'sigmoid'.
+    var_names (str) :
+    Optional. If given this string is plotted in the controll plots title.
+    Should describe the used dataset. 
     """
 
-    def __init__(self, n_features, h_layers, savedir, activation='relu'):
-        """Initializes the Classifier.
-
-        Arguments:
-        ----------------
-        nfeatures (int) :
-        The number of input features.
-        hlayers (list):
-        A list representing the hidden layers. Each entry gives the number of
-        neurons in the equivalent layer.
-        savedir (str) :
-        Path to the directory the model should be saved in.
-        activation (str) :
-        Default is 'relu'. Activation function used in the model. Also possible 
-        is 'tanh' or 'sigmoid'.
-
-        Attributes:
-        ----------------
-        name (str) :
-        Name of the model.
-        savedir (str) :
-        Path to directory everything will be saved in.
-        trained (bool) : 
-        Flag wether model has been trained or not
-        """
+    def __init__(self, n_features, h_layers, savedir, activation='relu',
+                 var_names=None):
         self.n_features = n_features
         self.n_labels = 1
         self.h_layers = h_layers
         self.activation = activation
         self.name = savedir.rsplit('/')[-1]
-        self.variables = savedir.rsplit('/')[1]
+        self.variables = var_names
         self.savedir = savedir
 
         # check wether model file exists
@@ -107,6 +99,12 @@ class BinaryMLP:
     
     def _get_activation(self, activation):
         """Get activation function.
+
+        Arguments:
+        -----------
+        activation (str) :
+        Activation function which should be use. Has to be 'relu', 'tanh' or
+        'sigmoid'.
 
         Returns:
         -----------
@@ -191,10 +189,9 @@ class BinaryMLP:
                 layer = tf.nn.dropout(activation(
                     tf.add(tf.matmul(layer, weight), bias)),keep_prob)
 
-        output_node = tf.nn.sigmoid(tf.add(tf.matmul(layer, W[-1]), B[-1]),
-                            name='output_node')
+        logit = tf.add(tf.matmul(layer, W[-1]), B[-1]) 
 
-        return output_node
+        return logit
 
     def train(self, train_data, val_data, epochs=10, batch_size=128,
               lr=1e-3, optimizer='adam', momentum=None, lr_decay=None,
@@ -259,11 +256,12 @@ class BinaryMLP:
 
             #prediction
             y_ = self._model(x_scaled, weights, biases, keep_prob)
-            yy_ = self._model(x_scaled, weights, biases)
+            yy_ = tf.nn.sigmoid(self._model(x_scaled, weights, biases))
 
             # loss function, added small number for more numerical stability
-            xentropy = -(tf.mul(y, tf.log(y_ + 1e-10)) +
-                         tf.mul(1-y, tf.log(1-y_ + 1e-10)))
+            xentropy = tf.nn.sigmoid_cross_entropy_with_logits(y_, y)
+            # -(tf.mul(y, tf.log(y_ + 1e-10)) +
+            #              tf.mul(1-y, tf.log(1-y_ + 1e-10)))
             l2_reg = beta*self._l2_regularization(weights)
             loss = tf.reduce_mean(tf.mul(w,xentropy)) + l2_reg
 
@@ -277,7 +275,12 @@ class BinaryMLP:
 
         train_start = time.time()
 
-        with tf.Session(graph=train_graph) as sess:
+        # dont allocate all available gpu memory, remove if you can dont share a
+        # machine with others
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+
+        with tf.Session(config=config, graph=train_graph) as sess:
             self.model_loc = self.savedir + '/{}.ckpt'.format(self.name)
             sess.run(init)
             
@@ -301,7 +304,6 @@ class BinaryMLP:
                 
                 for _ in range(total_batches):
                     train_x, train_y, train_w= train_data.next_batch(batch_size)
-
                     _,  = sess.run([train_step],
                                  {x: train_x, y: train_y, w: train_w})
                 
@@ -422,7 +424,8 @@ class BinaryMLP:
         plt.legend(loc='upper left', frameon=False)
         plt.xlabel('Netzwerk Ausgabe')
         plt.ylabel('normierte Ereignisse')
-        plt.title(self.variables, loc='left')
+        if self.variables:
+            plt.title(self.variables, loc='left')
         plt.title(self.name, loc='center')
         plt.title('CMS Private Work', loc='right')
         
@@ -448,7 +451,8 @@ class BinaryMLP:
         
         plt.xlabel('Signaleffizienz')
         plt.ylabel('Untergrundablehnung')
-        plt.title(self.variables, loc='left')
+        if self.variables:
+            plt.title(self.variables, loc='left')
         plt.title(self.name, loc='center')
         plt.title('CMS Private Work', loc='right')
         plt.legend(loc='best', frameon=False)
@@ -485,10 +489,16 @@ class BinaryMLP:
 
             x_scaled = tf.div(tf.sub(x, x_mean), x_std)
             
-            y_prob = self._model(x_scaled, weights, biases)
+            y_prob = tf.nn.sigmoid(self._model(x_scaled, weights, biases))
             
             saver = tf.train.Saver()
-        with tf.Session(graph = predict_graph) as sess:
+
+        # dont allocate all available gpu memory, remove if you can dont share a
+        # machine with others
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        
+        with tf.Session(config=config, graph = predict_graph) as sess:
             saver.restore(sess, self.savedir + '/{}.ckpt'.format(self.name))
             prob = sess.run(y_prob, {x: data})
 
@@ -512,10 +522,16 @@ class BinaryMLP:
 
             x_scaled = tf.div(tf.sub(x, x_mean), x_std, name='x_scaled')
             
-            y= self._model(x_scaled, weights, biases)
+            y= tf.nn.sigmoid(self._model(x_scaled, weights, biases),
+                             name='output_node')
             
             saver = tf.train.Saver()
-        with tf.Session(graph=export_graph) as sess:
+
+        # dont allocate all available gpu memory, remove if you can dont share a
+        # machine with others
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        with tf.Session(config=config, graph=export_graph) as sess:
             saver.restore(sess, self.savedir + '/{}.ckpt'.format(self.name))
             const_graph=tf.graph_util.convert_variables_to_constants(
                 sess, export_graph.as_graph_def(), ['output_node'])
@@ -534,7 +550,8 @@ class BinaryMLP:
         plt.xlabel('Epoche')
         plt.ylabel('Fehlerfunktion (mult. mit 10^6)')
         
-        plt.title(self.variables, loc='left')
+        if self.variables:
+            plt.title(self.variables, loc='left')
         plt.title(self.name, loc='center')
         plt.title('CMS Private Work', loc='right')
         # plt.ticklabel_format(axis='y', style='sci', scilimits=(-2,2))
@@ -555,7 +572,8 @@ class BinaryMLP:
         # make plot nicer
         plt.xlabel('Epoche')
         plt.ylabel('ROC Integral')
-        plt.title(self.variables, loc='left')
+        if self.variables:
+            plt.title(self.variables, loc='left')
         plt.title(self.name, loc='center')
         plt.title('CMS Private Work', loc='right')
         plt.legend(loc='best', frameon=False)

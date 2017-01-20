@@ -72,7 +72,7 @@ class GetBranches:
                                                     self.branches)
 
         self.new_branches = sig_branches
-        self._controll_plot(sig_data, bg_data, sig_branches)
+        # self._controll_plot(sig_data, bg_data, sig_branches)
 
         sig = {'data': sig_data}
         bg = {'data': bg_data}
