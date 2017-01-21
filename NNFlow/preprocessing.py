@@ -29,7 +29,7 @@ def convert_root_to_array(save_path, name, files, treename=None, branches=None):
     np.save(npfile, arr)
 
 
-class GetBranches:
+class GetVariables:
     """Takes numpy structured arrays and keeps only events of a certain
     category.
 
@@ -39,77 +39,67 @@ class GetBranches:
     The category events have to belong to in order to be kept.
     branchlist : str
     Path to the text file with the branches which should be used.
-    branches : list(str)
-    A list filled with the branches from branchlist.
+    variable list(str) :
+    A list cotaining filled with the branches from branchlist.
     save_path : str
     Path to the directory the processed array will be saved to.
     arr_name : str
     A name for the new array.
     """
     
-    def __init__(self, category, branchlist, weightlist):
+    def __init__(self, variablelist, weightlist, category, save_in):
         """Initializes the class with the given attributes.
         """
+        self._category = category
+        # create dir where arrays will be saved in
+        self.save_in = save_in  + '/' + category
+        if not os.path.isdir(self.save_in):
+            os.makedirs(self.save_in)
+            print('created directory {}'.format(self.save_in))
+            
+        self._vars = variablelist
+        self._weights = weightlist
+
+    def run(self, sig_paths, bkg_paths):
+
+        # load structured arrays
+        structured_sig = self._load_array(sig_paths)
+        structured_bkg = self._load_array(bkg_paths)
+
+        # get all variables from self._vars from the structured array as an
+        # 2d np.array
+        sig = self._get_vars(structured_sig, self._vars)
+        bkg = self._get_vars(structured_bkg, self._vars)
         
-        self.category = category
-        self.save_path = branchlist.split('/')[-1].split('.')[0] + '/' + category
-
-        with open (branchlist, 'r') as f:
-            self.branches = [line.strip('\n') for line in f]
-        self.weights = weightlist
-
-    def process(self, signal_path, background_path, arr_name):
-        self.arr_name = arr_name
-        if not os.path.isdir(self.save_path):
-            os.makedirs(self.save_path)
-            print('created directory {}'.format(self.save_path))
-        
-        structured_sig = np.load(signal_path)
-        structured_bg = np.load(background_path)
-        sig_data, sig_branches = self._get_branches(structured_sig,
-                                                    self.branches)
-        bg_data, bg_branches = self._get_branches(structured_bg,
-                                                    self.branches)
-
-        self.new_branches = sig_branches
-        # self._controll_plot(sig_data, bg_data, sig_branches)
-
-        sig = {'data': sig_data}
-        bg = {'data': bg_data}
-
-        sig['weights'] = self._get_weight(structured_sig)
-        bg['weights'] = self._get_weight(structured_bg)
+        sig['weights'] = self._get_unnormalized_weights(structured_sig)
+        bkg['weights'] = self._get_unnormalized_weights(structured_bkg)
 
         sig = self._get_category(sig, structured_sig)
-        bg = self._get_category(bg, structured_bg)
+        bkg = self._get_category(bkg, structured_bkg)
         
         n_sig_events = sig['data'].shape[0]
-        n_bg_events = bg['data'].shape[0]
-
+        n_bkg_events = bkg['data'].shape[0]
         sig['labels'] = self._get_labels(n_sig_events, 1.0)
-        bg['labels'] = self._get_labels(n_bg_events, 0.0)
+        bkg['labels'] = self._get_labels(n_bkg_events, 0.0)
 
-        self._save_array(sig, bg)
+        self._save_array(sig, bkg)
 
-    def _get_branches(self, structured_array, branches):
-        """Get branches out of the structured array and place them into a 
+    def _load_array(self, path_list):
+        """Loads all structured arrays given in the path list and stacks them
+        along axis 0.
+        """
+        array_list = []
+        for path in path_list:
+            array = np.load(path)
+            array_list.append(array)
+        array = np.concatenate(array_list, axis=0)
+
+        return array
+        
+    def _get_vars(self, structured_array, var_list):
+        """Get _vars out of the structured array and place them into a 
         normal numpy ndarray. If the branch is vector like, only keep the first
         four entries (jet variables).
-
-        Arguments
-        ---------
-        structured_array : numpy structured array
-        Structured array converted from ROOT file.
-        branches : list(str)
-        List of branches to out of the structured array.
-
-        Returns
-        -------
-        ndarray : numpy ndarray
-        An array filled with the data.
-        new_branches: list(str)
-        List of variables which ndarray is filled with. Each entry represents
-        the corresponding column of the array.
         """
 
         # define vector like variables
@@ -119,23 +109,24 @@ class GetBranches:
                 'Jet_GenJet_Pt', 'Jet_M','Jet_PartonFlav', 'Jet_Phi',
                 'Jet_PileUpID', 'Jet_Pt']
 
-        ndarray = []
-        new_branches = []
+        array_list = []
+        vars = []
         
-        for branch in branches:
-            if branch in jets:
+        for var in var_list:
+            if var in jets:
                 # only keep the first four entries of the jet vector
-                array = [jet[:4] for jet in structured_array[branch]]
-                ndarray.append(np.vstack(array))
-                new_branches += [branch+'_{}'.format(i) for i in range(1,5)]
+                array = [jet[:4] for jet in structured_array[var]]
+                array_list.append(np.vstack(array))
+                vars += [branch+'_{}'.format(i) for i in range(1,5)]
             else:
-                array = structured_array[branch].reshape(-1,1)
-                ndarray.append(array)
-                new_branches += [branch]
-        
-        return np.hstack(ndarray), new_branches
+                array = structured_array[var].reshape(-1,1)
+                array_list.append(array)
+                vars += [var]
 
-    def _get_weight(self, structured_array):
+        data_dict = {'data': np.hstack(array_list), 'vars': vars}
+        return data_dict
+
+    def _get_unnormalized_weights(self, structured_array):
         """Calculate the weight for eacht event.
 
         For each event we weill calculate:
@@ -153,12 +144,8 @@ class GetBranches:
         weights : numpy ndarray
         An array of shape (-1,1) filled with the weight of each event.
         """
-        # weight_names = ['Weight_XS', 'Weight_CSV', 'Weight_pu69p2']
-        # weight_names = ['Weight_XS']
-
-        weights, _ = self._get_branches(structured_array, self.weights)
-        weights = np.prod(weights, axis=1).reshape(-1,1)
-        weights /= np.sum(weights)
+        weights = self._get_vars(structured_array, self._weights)
+        weights = np.prod(weights['data'], axis=1).reshape(-1,1)
         
         return weights
         
@@ -192,7 +179,6 @@ class GetBranches:
         structured_array : numpy structured array
         Structured array converted from ROOT file.
         """
-        
         keep_events = []   
         for event in range(structured_array.shape[0]):
             N_LL = structured_array[event]['N_LooseLeptons']
@@ -200,13 +186,14 @@ class GetBranches:
             N_J = structured_array[event]['N_Jets']
             N_BTM = structured_array[event]['N_BTagsM']
 
-            if self._check_category(N_LL, N_TL, N_J, N_BTM, self.category):
+            if self._check_category(N_LL, N_TL, N_J, N_BTM, self._category):
                 keep_events.append(event)
             else:
                 continue
 
         keep_dict = {'data': data_dict['data'][keep_events],
-                     'weights': data_dict['weights'][keep_events]}
+                     'weights': data_dict['weights'][keep_events],
+                     'vars': data_dict['vars']}
 
         return keep_dict
     
@@ -231,7 +218,23 @@ class GetBranches:
 
         return category[name]
 
-    def _save_array(self, sig, bg):
+    def _split_array(self, array):
+        num_evts = array.shape[0]
+        num_train_evts = int(0.5*num_evts)
+        num_val_evts = int(0.1*num_evts)
+        # split array in [train, val, test]
+        arrays = np.split(array, [num_train_evts,
+                                 (num_train_evts+num_val_evts)])
+        
+        # normalize weights for each array
+        
+        for array in arrays:
+            array[:, -1] /= np.sum(array[:, -1])
+
+        return arrays
+        
+    
+    def _save_array(self, sig, bkg):
         """Stacks data and saves the array to given path.
 
         Arguments
@@ -241,63 +244,17 @@ class GetBranches:
         bg_dict : dict
         Dictionary containing background events.
         """
-        array_dir = self.save_path + '/' + self.arr_name
-        print('saving array to: {}, '.format(array_dir), end='')
-        sig_arr = np.hstack((sig['labels'], sig['data'], sig['weights']))
-        bg_arr = np.hstack((bg['labels'], bg['data'], bg['weights']))
+         # write variable names to file
+        with open(self.save_in + '/vars.txt', 'w') as f:
+            for var in sig['vars']:
+                f.write(var + '\n')
+                
+        sig = np.hstack((sig['labels'], sig['data'], sig['weights']))
+        bkg = np.hstack((bkg['labels'], bkg['data'], bkg['weights']))
 
-        ndarray = np.vstack((sig_arr, bg_arr))
-        np.save(array_dir + '.npy', ndarray)
-       
-        with open(self.save_path + '/branches.txt', 'w') as f:
-            for branch in self.new_branches:
-                f.write(branch + '\n')
-        
-        print('done.')
+        sig = self._split_array(sig)
+        bkg = self._split_array(bkg)
 
-    def _controll_plot(self, sig, bg, branches):
-        """Plot histograms of all variables
-
-        Arguments
-        ---------
-        sig : numpy ndarray
-        Array containing signal data.
-        bg : numpy ndarray
-        Array containing background data.
-        branches : list(str)
-        List of variable names.
-        """
-
-        plot_dir = self.save_path + '/controll_plots/' + self.arr_name
-        if not os.path.isdir(plot_dir):
-            os.makedirs(plot_dir)
-
-        for variable in range(sig.shape[1]):
-            # get binedges
-            sig_min, bg_min = np.amin(sig[:, variable]), np.amin(bg[:, variable])
-            sig_max, bg_max = np.amax(sig[:, variable]), np.amax(bg[:, variable])
-            if sig_min < bg_min:
-                glob_min = sig_min
-            else:
-                glob_min = bg_min
-            if sig_max > bg_max:
-                glob_max = sig_max
-            else:
-                glob_max = bg_max
-
-            bin_edges = np.linspace(glob_min, glob_max, 30)
-                        
-            n, bins, _ = plt.hist(sig[:, variable], bins=bin_edges,
-                                  histtype='step', normed=True, label='Signal',
-                                  color='black')
-            n, bins, _ = plt.hist(bg[:, variable], bins=bin_edges,
-                                  histtype='step', normed=True,
-                                  label='Background', color='red', ls='--')
-            plt.ylabel('norm. to unit area')
-            plt.xlabel(branches[variable])
-            plt.legend(loc='best', frameon=False)
-            plt.savefig(plot_dir + '/' + branches[variable] + '.pdf')
-            plt.savefig(plot_dir + '/' + branches[variable] + '.png')
-            plt.savefig(plot_dir + '/' + branches[variable] + '.eps')
-            plt.clf()
-                                  
+        np.save(self.save_in + '/train.npy', np.vstack((sig[0], bkg[0])))
+        np.save(self.save_in + '/val.npy', np.vstack((sig[1], bkg[1])))
+        np.save(self.save_in + '/test.npy', np.vstack((sig[2], bkg[2])))

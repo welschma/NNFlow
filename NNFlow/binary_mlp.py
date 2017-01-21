@@ -1,12 +1,14 @@
 # A Binary Multilayerperceptron Classifier. Currently Depends on a custom
 # dataset class defined in data_frame.py.
 from __future__ import absolute_import, division, print_function
-import tensorflow as tf
+
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import sys
+import tensorflow as tf
 import time
+
 from sklearn.metrics import roc_auc_score, roc_curve
 from .draw_nn import PlotNN
 
@@ -80,13 +82,13 @@ class BinaryMLP:
         # fancy loop in order to create weights connecting the hidden layer.
         if len(h_layers) > 1:
             for i in range(1, len(h_layers)):
-                weights.append(tf.Variable(tf.random_normal(
-                    shape = [h_layers[i-1], h_layers[i]],
+                weights.append(tf.Variable(
+                    tf.random_normal( shape = [h_layers[i-1], h_layers[i]],
                     stddev = tf.sqrt(2.0/h_layers[i-1])),
-                                           name = 'W_{}'.format(i+1)))
-                biases.append(tf.Variable(tf.fill(dims=[h_layers[i]],
-                                                  value=0.1),
-                                          name = 'B_{}'.format(i+1)))
+                    name = 'W_{}'.format(i+1)))
+                biases.append(tf.Variable(
+                    tf.fill(dims=[h_layers[i]], value=0.1),
+                    name = 'B_{}'.format(i+1)))
 
         weights.append(tf.Variable(
                 tf.random_normal([h_layers[-1], 1],
@@ -161,7 +163,7 @@ class BinaryMLP:
 
         return opt, global_step
     
-    def _model(self, data, W, B, keep_prob=1.0):
+    def _model(self, x, W, B, keep_prob=1.0):
         """Model for the multi layer perceptron
 
         Arguments:
@@ -181,7 +183,7 @@ class BinaryMLP:
         activation = self._get_activation(self.activation)
         
         layer = tf.nn.dropout(activation(
-            tf.add(tf.matmul(data, W[0]), B[0])), keep_prob)
+            tf.add(tf.matmul(x, W[0]), B[0])), keep_prob)
         
         # fancy loop for creating hidden layer
         if len(self.h_layers) > 1:
@@ -246,22 +248,19 @@ class BinaryMLP:
             w = tf.placeholder(tf.float32, [None, 1])
 
             x_mean = tf.Variable(np.mean(train_data.x, axis=0).astype(np.float32),
-                                 trainable=False, name='x_mean')
+                                 trainable=False,  name='x_mean')
             x_std = tf.Variable(np.std(train_data.x, axis=0).astype(np.float32),
-                                trainable=False, name='x_std')
+                                trainable=False,  name='x_std')
+            x_scaled = tf.div(tf.sub(x, x_mean), x_std, name='x_scaled')
 
-            x_scaled = tf.div(tf.sub(x, x_mean), x_std)
-            
             weights, biases = self._get_parameters()
 
             #prediction
             y_ = self._model(x_scaled, weights, biases, keep_prob)
             yy_ = tf.nn.sigmoid(self._model(x_scaled, weights, biases))
 
-            # loss function, added small number for more numerical stability
+            # loss function
             xentropy = tf.nn.sigmoid_cross_entropy_with_logits(y_, y)
-            # -(tf.mul(y, tf.log(y_ + 1e-10)) +
-            #              tf.mul(1-y, tf.log(1-y_ + 1e-10)))
             l2_reg = beta*self._l2_regularization(weights)
             loss = tf.reduce_mean(tf.mul(w,xentropy)) + l2_reg
 
@@ -286,41 +285,36 @@ class BinaryMLP:
             
             train_auc = []
             val_auc = []
-            train_losses = []
-            val_losses = []
+            train_loss = []
             early_stopping  = {'auc': 0.0, 'epoch': 0}
              
-            print(125*'-')
+            print(90*'-')
             print('Train model: {}'.format(self.model_loc))
-            print(125*'-')
-            print('{:^20} | {:^20} | {:^20} | {:^20} |{:^25}'.format(
-                'Epoch', 'Training Loss', 'Validation Loss',
-                'AUC Training Score', 'AUC Validation Score'))
-            print(125*'-')
+            print(90*'-')
+            print('{:^20} | {:^20} | {:^20} |{:^25}'.format(
+                'Epoch', 'Training Loss','AUC Training Score',
+                'AUC Validation Score'))
+            print(90*'-')
 
             for epoch in range(epochs):
                 total_batches = int(train_data.n/batch_size)
-                train_loss = 0
-                
+                epoch_loss = 0
                 for _ in range(total_batches):
-                    train_x, train_y, train_w= train_data.next_batch(batch_size)
-                    _,  = sess.run([train_step],
-                                 {x: train_x, y: train_y, w: train_w})
-                
+                    train_x, train_y, train_w= train_data.next_batch(batch_size) 
+                    batch_loss, _  = sess.run([loss, train_step],
+                                              {x: train_x,
+                                               y: train_y,
+                                               w: train_w})
+                    epoch_loss += batch_loss
                 # monitor training
-                val_losses.append(sess.run(loss, {x: val_data.x,
-                                                  y: val_data.y,
-                                                  w: val_data.w}))
-                train_losses.append(sess.run(loss, {x: train_data.x,
-                                                    y: train_data.y,
-                                                    w: train_data.w}))
+                train_loss.append(epoch_loss/total_batches)
                 train_pre = sess.run(yy_, {x : train_data.x})
                 train_auc.append(roc_auc_score(train_data.y, train_pre))
                 val_pre = sess.run(yy_, {x : val_data.x})
                 val_auc.append(roc_auc_score(val_data.y, val_pre))
                 
-                print('{:^20} | {:^20.4e} | {:^20.4e} | {:^20.4f} | {:^25.4f}'
-                      .format(epoch+1, train_losses[-1], val_losses[-1],
+                print('{:^20} | {:^20.4e} | {:^20.4f} | {:^25.4f}'
+                      .format(epoch+1, train_loss[-1],
                               train_auc[-1], val_auc[-1]))
 
                 if early_stop:
@@ -347,15 +341,15 @@ class BinaryMLP:
                 
             train_end = time.time()
             
-            print(125*'-')
+            print(90*'-')
             self._validation(early_stopping['val_pre'], val_data.y)
             self._plot_auc_dev(train_auc, val_auc, epochs)
-            self._plot_loss(train_losses, val_losses)
+            self._plot_loss(train_loss)
             self.trained = True
             self._write_parameters(batch_size, keep_prob, beta,
                                    (train_end - train_start), early_stopping)
             print('Model saved in: {}'.format(save_path))
-            print(125*'-')
+            print(90*'-')
             
     def _l2_regularization(self, weights):
         """Calculate and adds the squared values of the weights. This is used
@@ -364,6 +358,76 @@ class BinaryMLP:
         weights = map(lambda x: tf.nn.l2_loss(x), weights)
 
         return tf.add_n(weights)
+
+    def classify(self, data):
+        """Predict probability of a new feauture to belong to the signal.
+
+        Arguments:
+        ----------------
+        data (custom data set):
+        Data to classify.
+
+        Returns:
+        ----------------
+        prob (np.array):
+        Contains probabilities of a sample to belong to the signal.
+        """
+        if not self.trained:
+            sys.exit('Model {} has not been trained yet'.format(self.name))
+
+        predict_graph = tf.Graph()
+        with predict_graph.as_default():
+            weights, biases = self._get_parameters()
+            x = tf.placeholder(tf.float32, [None, self.n_features])
+            x_mean = tf.Variable(-1.0, validate_shape=False,  name='x_mean')
+            x_std = tf.Variable(-1.0, validate_shape=False,  name='x_std')
+            x_scaled = tf.div(tf.sub(x, x_mean), x_std, name='x_scaled')
+            y=  tf.nn.sigmoid(self._model(x_scaled, weights, biases))
+            
+            saver = tf.train.Saver()
+
+        # dont allocate all available gpu memory, remove if you can dont share a
+        # machine with others
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        
+        with tf.Session(config=config, graph = predict_graph) as sess:
+            saver.restore(sess, self.savedir + '/{}.ckpt'.format(self.name))
+            prob = sess.run(y, {x: data})
+
+        return prob
+
+    def export_graph_to_pb(self):
+        """Export the graph definition and the parameters of the model to a 
+        Protobuff file, that can be used by TensorFlow's C++ API. Do not change
+        node names.
+        """
+        if not self.trained:
+            sys.exit('Model {} has not been trained yet'.format(self.name))
+
+        export_graph = tf.Graph()
+        with export_graph.as_default():
+            weights, biases = self._get_parameters()
+            x = tf.constant(-1.0, shape=[1, self.n_features],
+                               name='input_node')
+            x_mean = tf.Variable(-1.0, validate_shape=False,  name='x_mean')
+            x_std = tf.Variable(-1.0, validate_shape=False,  name='x_std')
+            x_scaled = tf.div(tf.sub(x, x_mean), x_std, name='x_scaled')
+            y = tf.nn.sigmoid(self._model(x_scaled, weights, biases),
+                             name='output_node')
+            
+            saver = tf.train.Saver()
+
+        # dont allocate all available gpu memory, remove if you can dont share a
+        # machine with others
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        with tf.Session(config=config, graph=export_graph) as sess:
+            saver.restore(sess, self.savedir + '/{}.ckpt'.format(self.name))
+            const_graph=tf.graph_util.convert_variables_to_constants(
+                sess, export_graph.as_graph_def(), ['output_node'])
+            tf.train.write_graph(const_graph, self.savedir, self.name + ".pb",
+                                 as_text=False)
 
     def _write_parameters(self, batch_size, keep_prob, beta, time,
                           early_stop):
@@ -384,11 +448,17 @@ class BinaryMLP:
                         .format(self._lr_decay[0], self._lr_decay[1]))
             f.write('Number of epochs trained: {}\n'
                     .format(early_stop['epoch']))
-            f.write('Validation auc score: {}\n'.format(early_stop['auc']))
+            f.write('Validation ROC-AUC score: {:.4f}\n'
+                    .format(early_stop['auc']))
             f.write('Batch Size: {}\n'.format(batch_size))
             f.write('Dropout: {}\n'.format(keep_prob))
             f.write('L2 Regularization: {}\n'.format(beta))
             f.write('Training Time: {} s\n'.format(time))
+
+        with open('{}/NN_Info.txt'.format(self.savedir), 'r') as f:
+            for line in f:
+                print(line)
+        print(90*'-')
 
     def _validation(self, pred, labels):
         """Validation of the training process.
@@ -453,100 +523,22 @@ class BinaryMLP:
         plt.ylabel('Untergrundablehnung')
         if self.variables:
             plt.title(self.variables, loc='left')
+        plt.grid(True)
         plt.title(self.name, loc='center')
         plt.title('CMS Private Work', loc='right')
-        plt.legend(loc='best', frameon=False)
+        plt.legend(loc='best')
         
         plt.savefig(self.savedir + '/' + plt_name + '.pdf')
         plt.savefig(self.savedir + '/' + plt_name + '.png')
         plt.savefig(self.savedir + '/' + plt_name + '.eps')
         plt.clf()
-
-    def classify(self, data):
-        """Predict probability of a new feauture to belong to the signal.
-
-        Arguments:
-        ----------------
-        data (custom data set):
-        Data to classify.
-
-        Returns:
-        ----------------
-        prob (np.array):
-        Contains probabilities of a sample to belong to the signal.
-        """
-
-
-        if not self.trained:
-            sys.exit('Model {} has not been trained yet'.format(self.name))
-
-        predict_graph = tf.Graph()
-        with predict_graph.as_default():
-            weights, biases = self._get_parameters()
-            x = tf.placeholder(tf.float32, [None, self.n_features])
-            x_mean = tf.Variable(-1.0, validate_shape=False,  name='x_mean')
-            x_std = tf.Variable(-1.0, validate_shape=False,  name='x_std')
-
-            x_scaled = tf.div(tf.sub(x, x_mean), x_std)
             
-            y_prob = tf.nn.sigmoid(self._model(x_scaled, weights, biases))
-            
-            saver = tf.train.Saver()
-
-        # dont allocate all available gpu memory, remove if you can dont share a
-        # machine with others
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        
-        with tf.Session(config=config, graph = predict_graph) as sess:
-            saver.restore(sess, self.savedir + '/{}.ckpt'.format(self.name))
-            prob = sess.run(y_prob, {x: data})
-
-        return prob
-
-    def export_graph_to_pb(self):
-        """Export the graph definition and the parameters of the model to a 
-        Protobuff file, that can be used by TensorFlow's C++ API. Do not change
-        node names.
-        """
-        if not self.trained:
-            sys.exit('Model {} has not been trained yet'.format(self.name))
-
-        export_graph = tf.Graph()
-        with export_graph.as_default():
-            weights, biases = self._get_parameters()
-            x = tf.constant(-1.0, shape=[1, self.n_features],
-                               name='input_node')
-            x_mean = tf.Variable(-1.0, validate_shape=False,  name='x_mean')
-            x_std = tf.Variable(-1.0, validate_shape=False,  name='x_std')
-
-            x_scaled = tf.div(tf.sub(x, x_mean), x_std, name='x_scaled')
-            
-            y= tf.nn.sigmoid(self._model(x_scaled, weights, biases),
-                             name='output_node')
-            
-            saver = tf.train.Saver()
-
-        # dont allocate all available gpu memory, remove if you can dont share a
-        # machine with others
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        with tf.Session(config=config, graph=export_graph) as sess:
-            saver.restore(sess, self.savedir + '/{}.ckpt'.format(self.name))
-            const_graph=tf.graph_util.convert_variables_to_constants(
-                sess, export_graph.as_graph_def(), ['output_node'])
-            tf.train.write_graph(const_graph, self.savedir, self.name + ".pb",
-                                 as_text=False)
-
-            
-    def _plot_loss(self, train_loss, val_loss):
+    def _plot_loss(self, train_loss):
         """Plot loss of training and validation data.
         """
         train_loss = np.array(train_loss)*10**6
-        val_loss = np.array(val_loss)*10**6
         
         plt.plot(train_loss, label= 'Trainingsfehler', color='#1f77b4', lw=1.7)
-        plt.plot(val_loss, label= 'Validierungsfehler', color='#ff7f0e', lw=1.7)
         plt.xlabel('Epoche')
         plt.ylabel('Fehlerfunktion (mult. mit 10^6)')
         
