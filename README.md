@@ -27,42 +27,46 @@ Once you've converted the nTuples to numpy arrays, you have do some other prepro
 
 Example:
 ```
-from NNFlow.preprocessing import GetBranches
+from NNFlow.preprocessing import GetVariables
 
-ttH = 'path/to/ttH.npy'
-ttbarSL = 'path/to/ttbarSL.npy'
-branches = 'branchlist.txt'
+ttH_Even = '/storage/a/welsch/ntuples/numpy/ttH_Even.npy'
+ttH_Odd = '/storage/a/welsch/ntuples/numpy/ttH_Odd.npy'
+ttbarSL_Even = '/storage/a/welsch/ntuples/numpy/ttbarSL_Even.npy'
+ttbarSL_Odd = '/storage/a/welsch/ntuples/numpy/ttbarSL_Odd.npy'
+
+variables = ['var_1', 'var_2', 'var_3', ...]
 weights = ['weight_1', 'weight_2', 'weight_3', ...]
 category = '63'
 
-gb = GetBranches('my_variables', category, branches, weights)
-gb.process(ttH, ttbarSL, 'even')
+gv = GetVariables(variables, weights, category, 'my_variables')
+gv.run([ttH_Even, ttH_Odd], [ttbarSL_Even, ttbarSL_Odd]
 ```
-This script gets the branches defined in the ```branchlist.txt``` file (one branch name in every line) from the structured array and saves them into a normal 2D np.ndarray.
-If a branch is vector like then you should check if the branch is included in the list in line 116 in file [NNFlow/preprocessing](NNFlow/preprocessing.py) (checking for vector like data is not automated yet).
+This script gets the variables defined in the ```variables``` list from the structured array and saves them into a normal 2D np.ndarray.
+If a variable is vector like then you should check if the branch is included in the list in line 106 in file [NNFlow/preprocessing](NNFlow/preprocessing.py) (checking for vector like data is not automated yet).
 
 The signal (ttH) and background (ttbarSL) are combined into one array.
 Labels for signal (1) and background (0) are added in the first column, the event weights are added in the last column.
-The event weights are normed to sum 1 respectively for signal and background.
-The directory 'my_variables/category' is created and the array 'even.npy' is save in it.
+The data is split into a split into 3 datasets. 50% of the data is used for training, 10% for validation and 40% for testing.
+The event weights are normed to sum 1 respectively for signal and background in each dataset.
+The arrays will be saved in the directory 'my_variables/category' as ```train.npy```, ```val.npy``` and ```test.npy```.
 
 ### Train a neural network
 Here is a simple example script if you want to train a neural network.
 Please have a look at [NNFlow/binary_mlp](NNFlow/binary_mlp.py) and [NNFlow/data_frame](NNFlow/data_frame.py) files for more information about the options.
 ```
+import numpy as np
 from NNFlow.binary_mlp import BinaryMLP
-from NNFlow.data_frame import load_data
+from NNFlow.data_frame import Dataframe
 
-even = 'my_variables/category/even.npy'
-odd = 'my_variables/category/odd.npy'
-train, val, test = load_data(even, odd)
+train = 'my_variables/category/train.npy'
+val = 'my_variables/category/val.npy'
+test = 'my_variables/category/test.npy'
 
 save_model_to = 'my_variables/category/models/2x100'
-n_features = train.nfeatures
 hidden_layers = [100, 100] 
 
 # create neural net
-mlp = BinaryMLP(train.nfeatures, [100, 100], save_model_to)
+mlp = BinaryMLP(train.nvariables, [100, 100], save_model_to)
 
 # train 
 mlp.train(train, val, epochs=250, lr=1e-3)
@@ -73,6 +77,7 @@ y_test = mlp.classify(test.x)
 This script will train a neural network with two hidden layers with 100 neurons.
 The network is saved to the directory 'save_model_to'. 
 Also some controll plots of the training process will be saved there.
+To reuse a model in a different script, you can use the same script without the training step.
 
 ## Dependencies
 Tested with

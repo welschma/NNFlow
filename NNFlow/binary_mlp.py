@@ -20,7 +20,7 @@ class BinaryMLP:
 
     Arguments:
     ----------------
-    n_features (int) :
+    n_variables (int) :
     The number of input features.
     h_layers (list):
     A list representing the hidden layers. Each entry gives the number of
@@ -35,9 +35,9 @@ class BinaryMLP:
     Should describe the used dataset. 
     """
 
-    def __init__(self, n_features, h_layers, savedir, activation='relu',
+    def __init__(self, n_variables, h_layers, savedir, activation='relu',
                  var_names=None):
-        self.n_features = n_features
+        self.n_variables = n_variables
         self.n_labels = 1
         self.h_layers = h_layers
         self.activation = activation
@@ -70,12 +70,12 @@ class BinaryMLP:
         biases (list) :
         A dictionary with the tensorflow Variables for the biases.
         """
-        n_features = self.n_features
+        n_variables = self.n_variables
         h_layers = self.h_layers
 
         weights = [tf.Variable(
-            tf.random_normal(shape = [n_features, h_layers[0]],
-                             stddev = tf.sqrt(2.0/n_features)), name = 'W_1')]
+            tf.random_normal(shape = [n_variables, h_layers[0]],
+                             stddev = tf.sqrt(2.0/n_variables)), name = 'W_1')]
         biases = [tf.Variable(tf.fill(dims=[h_layers[0]],
                                       value=0.1), name = 'B_1')]
 
@@ -243,7 +243,7 @@ class BinaryMLP:
         
         train_graph = tf.Graph()
         with train_graph.as_default():
-            x = tf.placeholder(tf.float32, [None, self.n_features])
+            x = tf.placeholder(tf.float32, [None, self.n_variables])
             y = tf.placeholder(tf.float32, [None, 1])
             w = tf.placeholder(tf.float32, [None, 1])
 
@@ -255,14 +255,16 @@ class BinaryMLP:
 
             weights, biases = self._get_parameters()
 
-            #prediction
+            # prediction, y_ is used for training, yy_ used for makin new
+            # predictions
             y_ = self._model(x_scaled, weights, biases, keep_prob)
             yy_ = tf.nn.sigmoid(self._model(x_scaled, weights, biases))
 
             # loss function
             xentropy = tf.nn.sigmoid_cross_entropy_with_logits(y_, y)
             l2_reg = beta*self._l2_regularization(weights)
-            loss = tf.reduce_mean(tf.mul(w,xentropy)) + l2_reg
+            loss = tf.reduce_mean(tf.mul(w, tf.add(xentropy, l2_reg)),
+                                  name='loss')
 
             # optimizer
             opt, global_step = self._get_optimizer()
@@ -325,7 +327,7 @@ class BinaryMLP:
                         early_stopping['auc'] = val_auc[-1]
                         early_stopping['epoch'] = epoch+1
                         early_stopping['val_pre'] = val_pre
-                    elif (epoch - early_stopping['epoch']) > early_stop:
+                    elif (epoch+1 - early_stopping['epoch']) > early_stop:
                         print(125*'-')
                         print('Validation AUC has not increased for {} epochs. ' \
                               'Achieved best validation auc score of {:.4f} ' \
@@ -378,7 +380,7 @@ class BinaryMLP:
         predict_graph = tf.Graph()
         with predict_graph.as_default():
             weights, biases = self._get_parameters()
-            x = tf.placeholder(tf.float32, [None, self.n_features])
+            x = tf.placeholder(tf.float32, [None, self.n_variables])
             x_mean = tf.Variable(-1.0, validate_shape=False,  name='x_mean')
             x_std = tf.Variable(-1.0, validate_shape=False,  name='x_std')
             x_scaled = tf.div(tf.sub(x, x_mean), x_std, name='x_scaled')
@@ -408,7 +410,7 @@ class BinaryMLP:
         export_graph = tf.Graph()
         with export_graph.as_default():
             weights, biases = self._get_parameters()
-            x = tf.constant(-1.0, shape=[1, self.n_features],
+            x = tf.constant(-1.0, shape=[1, self.n_variables],
                                name='input_node')
             x_mean = tf.Variable(-1.0, validate_shape=False,  name='x_mean')
             x_std = tf.Variable(-1.0, validate_shape=False,  name='x_std')
@@ -435,6 +437,7 @@ class BinaryMLP:
         """
 
         with open('{}/NN_Info.txt'.format(self.savedir), 'w') as f:
+            f.write('Number of input variables: {}\n'.format(self.n_variables))
             f.write('Number of hidden layers and neurons: {}\n'
                     .format(self.h_layers))
             f.write('Activation function: {}\n'.format(self.activation))

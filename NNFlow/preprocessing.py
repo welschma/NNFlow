@@ -117,7 +117,7 @@ class GetVariables:
                 # only keep the first four entries of the jet vector
                 array = [jet[:4] for jet in structured_array[var]]
                 array_list.append(np.vstack(array))
-                vars += [branch+'_{}'.format(i) for i in range(1,5)]
+                vars += [var+'_{}'.format(i) for i in range(1,5)]
             else:
                 array = structured_array[var].reshape(-1,1)
                 array_list.append(array)

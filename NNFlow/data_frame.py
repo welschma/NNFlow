@@ -11,7 +11,7 @@ class DataFrame:
         self.y = array[:, :1]
         self.w = array[:, -1:]
         self.n = self.x.shape[0]
-        self.nfeatures = self.x.shape[1]
+        self.nvariables = self.x.shape[1]
         self.next_id=0
         self.shuffle()
         self._check_std()
@@ -42,23 +42,3 @@ class DataFrame:
             print(data_std)
             sys.exit('Remove Variable with std 0.0') 
 
-def load_data(even_path, odd_path):
-    """Load even and odd numpy arrays and return train, val and test
-    DataFrames.
-    """
-    train = np.load(even_path)
-    odd = np.load(odd_path)
-
-    # split odd in valdiation and test array, ratio 1:9
-    # ratio between signal and background is kept
-    bins, _ = np.histogram(odd[:, 0])
-    n_sig, n_bg = bins[-1], bins[0]
-    n_events = odd.shape[0]
-    
-    val_sig = odd[:int(0.1*n_sig)]
-    val_bg = odd[n_events - int(0.1*n_bg):]
-    
-    test = odd[int(0.1*n_sig):n_events-int(0.1*n_bg)]
-    val = np.vstack((val_sig, val_bg))
-    
-    return DataFrame(train), DataFrame(val), DataFrame(test)
