@@ -10,6 +10,6 @@ setup(name='NNFlow',
       install_requires=[
           'matplotlib',
           'root-numpy',
-          'tensorflow==0.11.0',
+          'tensorflow==0.11.0*',
       ],
       zip_safe=True)
