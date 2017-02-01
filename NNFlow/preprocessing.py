@@ -26,7 +26,7 @@ def conv_root_to_np(save_path, name, files, treename=None, branches=None):
         os.makedirs(save_path)
 
     np_file = save_path + '/' + name
-    np.save(npfile, arr)
+    np.save(np_file, arr)
 
 
 class GetVariables:
