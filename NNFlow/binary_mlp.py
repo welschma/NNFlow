@@ -263,7 +263,7 @@ class BinaryMLP:
             # loss function
             xentropy = tf.nn.sigmoid_cross_entropy_with_logits(y_, y)
             l2_reg = beta*self._l2_regularization(weights)
-            loss = tf.reduce_mean(tf.mul(w, tf.add(xentropy, l2_reg)),
+            loss = tf.add(tf.reduce_mean(tf.mul(w, xentropy)), l2_reg,
                                   name='loss')
 
             # optimizer
@@ -342,9 +342,10 @@ class BinaryMLP:
                 train_data.shuffle()
                 
             train_end = time.time()
-            
+            train_pre = sess.run(yy_, {x: train_data.x})
             print(90*'-')
-            self._validation(early_stopping['val_pre'], val_data.y)
+            self._validation(train_pre, train_data.y,
+                             early_stopping['val_pre'], val_data.y)
             self._plot_auc_dev(train_auc, val_auc, epochs)
             self._plot_loss(train_loss)
             self.trained = True
@@ -463,7 +464,7 @@ class BinaryMLP:
                 print(line)
         print(90*'-')
 
-    def _validation(self, pred, labels):
+    def _validation(self, t_pred, t_labels, v_pred, v_labels):
         """Validation of the training process.
         Makes plots of ROC curves and displays the development of AUC score.
 
@@ -473,28 +474,37 @@ class BinaryMLP:
         Predictions for data put in the model.
         labels (np.array, shape(-1)) :
         Lables of the validation dataset.
-
-        Returns:
-        ----------
-        auc_sore (float):
-        Number between 0 and 1.0. Area under the ROC curve. 
-        Displays the model's quality.
         """
-
-        # distribution
-        y = np.hstack((pred, labels))
-        sig = y[y[:,1]==1, 0]
-        bg = y[y[:,1]==0, 0]
-       
-        bin_edges = np.linspace(0, 1, 30)
-        plt.hist(sig, bins=bin_edges, color='#1f77b4',histtype='step',
-                 label='Signal', normed='True', lw=1.7)
-        bins, _, _ = plt.hist(bg, bins=bin_edges, color='#d62728',
-                              histtype='step', label='Untergrund',
-                              normed='True', lw=1.7)
         
-
-        plt.legend(loc='upper left', frameon=False)
+        def seperate_sig_bkg(pred, labels):
+            """This functions seperates signal and background output of the
+            neural network.
+            """
+            y = np.hstack((pred, labels))
+            sig = y[y[:,1]==1, 0]
+            bg = y[y[:,1]==0, 0]
+            return sig, bg
+        
+        # plot distribution
+        t_sig, t_bg = seperate_sig_bkg(t_pred, t_labels)
+        v_sig, v_bg = seperate_sig_bkg(v_pred, v_labels)
+        bin_edges = np.linspace(0, 1, 30)
+        bin_centres = (bin_edges[:-1] + bin_edges[1:])/2
+        v_sig = np.histogram(v_sig, bins=bin_edges, normed=True)[0]
+        v_bg = np.histogram(v_bg, bins=bin_edges, normed=True)[0]
+        
+        plt.hist(t_sig, bins=bin_edges, histtype='step', lw=1.5,
+                 label='Signal (Training)', normed='True', color='#1f77b4')
+        plt.hist(t_bg, bins=bin_edges, lw=1.5, histtype='step',
+                 label='Untergrund (Training)', normed='True',
+                 color='#d62728')
+        plt.plot(bin_centres, v_sig, ls='', marker='o', markersize=3, color='#1f77b4',
+                 label='Signal (Validierung)')
+        plt.plot(bin_centres, v_bg, ls='', marker='o', markersize=3, color='#d62728',
+                 label='Untergrund (Validierung)')
+        plt.ylim([0.0, np.amax(v_sig)*1.4])
+        
+        plt.legend(loc='upper left')
         plt.xlabel('Netzwerk Ausgabe')
         plt.ylabel('normierte Ereignisse')
         if self.variables:
@@ -510,9 +520,9 @@ class BinaryMLP:
         plt.clf()
 
         # roc curve
-        pred = np.reshape(pred, -1)
-        fpr, tpr, thresh = roc_curve(labels, pred)
-        auc = roc_auc_score(labels, pred)
+        v_pred = np.reshape(v_pred, -1)
+        fpr, tpr, thresh = roc_curve(v_labels, v_pred)
+        auc = roc_auc_score(v_labels, v_pred)
         #plot the roc_curve
         plt_name = self.name +  '_roc'
         
@@ -541,7 +551,8 @@ class BinaryMLP:
         """
         train_loss = np.array(train_loss)*10**6
         
-        plt.plot(train_loss, label= 'Trainingsfehler', color='#1f77b4', lw=1.7)
+        plt.plot(train_loss, label= 'Trainingsfehler', color='#1f77b4', ls='',
+                 marker='^')
         plt.xlabel('Epoche')
         plt.ylabel('Fehlerfunktion (mult. mit 10^6)')
         
@@ -561,8 +572,10 @@ class BinaryMLP:
     def _plot_auc_dev(self, train_auc, val_auc, nepochs):
         """Plot ROC-AUC-Score development
         """
-        plt.plot(train_auc, color='#1f77b4', label='Training', lw=1.7)
-        plt.plot(val_auc, color='#ff7f0e', label='Validierung', lw=1.7)
+        plt.plot(train_auc, color='#1f77b4', label='Training', ls='',
+                 marker='^')
+        plt.plot(val_auc, color='#ff7f0e', label='Validierung', ls='',
+                 marker='^')
         
         # make plot nicer
         plt.xlabel('Epoche')

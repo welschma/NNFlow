@@ -7,7 +7,7 @@ NNFlow provides a function, based on root-numpy, for converting Root nTuples int
 
 Example:
 ```
-from NNFlow.preprocessing import convert_root_to_array
+from NNFlow.preprocessing import conv_root_to_np
 
 ntuples = ['path/to/ntuple_1', 'path/to/ntuple_2', ...]
 save_to = 'path/to/storage/directory'
@@ -15,7 +15,7 @@ name = 'array.npy'
 my_tree = 'tree'
 my_branches = ['branch_1', 'branch_2']
 
-convert_root_to_array(save_to, name, ntuples, tree=my_tree, branches=my_branches)
+conv_root_to_np(save_to, name, ntuples, tree=my_tree, branches=my_branches)
 ```
 If there is only one TTree in the nTuple you do not have to provide the name of the tree which should be converted.
 If you want to convert all branches of a tree, do not provide a branchlist.
@@ -29,17 +29,20 @@ Example:
 ```
 from NNFlow.preprocessing import GetVariables
 
-ttH_Even = '/storage/a/welsch/ntuples/numpy/ttH_Even.npy'
-ttH_Odd = '/storage/a/welsch/ntuples/numpy/ttH_Odd.npy'
-ttbarSL_Even = '/storage/a/welsch/ntuples/numpy/ttbarSL_Even.npy'
-ttbarSL_Odd = '/storage/a/welsch/ntuples/numpy/ttbarSL_Odd.npy'
+sig_1 = 'path/to/signal_1.npy'
+sig_2 = 'path/to/signal_2.npy'
+...
+
+bkg_1 = 'path/to/background_1.npy'
+bkg_2 = 'path/to/background_2.npy'
+...
 
 variables = ['var_1', 'var_2', 'var_3', ...]
 weights = ['weight_1', 'weight_2', 'weight_3', ...]
 category = '63'
 
 gv = GetVariables(variables, weights, category, 'my_variables')
-gv.run([ttH_Even, ttH_Odd], [ttbarSL_Even, ttbarSL_Odd]
+gv.run([sig_1, sig_2, ...], [bkg_1, bkg_2, ...])
 ```
 This script gets the variables defined in the ```variables``` list from the structured array and saves them into a normal 2D np.ndarray.
 If a variable is vector like then you should check if the branch is included in the list in line 106 in file [NNFlow/preprocessing](NNFlow/preprocessing.py) (checking for vector like data is not automated yet).
@@ -78,6 +81,10 @@ This script will train a neural network with two hidden layers with 100 neurons.
 The network is saved to the directory 'save_model_to'. 
 Also some controll plots of the training process will be saved there.
 To reuse a model in a different script, you can use the same script without the training step.
+
+## ToDo
+* root-numpy now supports python3 -> check if NNFlow supports Python3
+* get rid of scikit-learn dependency -> write own implementation for calculating ROC-Curves and ROC-AUC score
 
 ## Dependencies
 Tested with

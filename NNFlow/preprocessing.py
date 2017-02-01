@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from root_numpy import root2array
 
 
-def convert_root_to_array(save_path, name, files, treename=None, branches=None):
+def conv_root_to_np(save_path, name, files, treename=None, branches=None):
     """Convert trees in ROOT files into a numpy structured array.
 
     Arguments
