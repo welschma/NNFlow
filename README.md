@@ -7,7 +7,7 @@ NNFlow provides a function, based on root-numpy, for converting Root nTuples int
 
 Example:
 ```
-from NNFlow.preprocessing import conv_root_to_np
+from NNFlow.preprocessing import convert_root_to_array
 
 ntuples = ['path/to/ntuple_1', 'path/to/ntuple_2', ...]
 save_to = 'path/to/storage/directory'
