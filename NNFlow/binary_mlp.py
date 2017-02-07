@@ -274,13 +274,13 @@ class BinaryMLP:
             init = tf.global_variables_initializer()
             saver = tf.train.Saver(weights + biases + [x_mean, x_std])
 
-        train_start = time.time()
+        
 
         # dont allocate all available gpu memory, remove if you can dont share a
         # machine with others
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
-
+        #config.gpu_options.per_process_gpu_memory_fraction = 0.1
         with tf.Session(config=config, graph=train_graph) as sess:
             self.model_loc = self.savedir + '/{}.ckpt'.format(self.name)
             sess.run(init)
@@ -289,7 +289,7 @@ class BinaryMLP:
             val_auc = []
             train_loss = []
             early_stopping  = {'auc': 0.0, 'epoch': 0}
-             
+            epoch_durations = []
             print(90*'-')
             print('Train model: {}'.format(self.model_loc))
             print(90*'-')
@@ -298,7 +298,8 @@ class BinaryMLP:
                 'AUC Validation Score'))
             print(90*'-')
 
-            for epoch in range(epochs):
+            for epoch in range(1, epochs+1):
+                epoch_start = time.time()
                 total_batches = int(train_data.n/batch_size)
                 epoch_loss = 0
                 for _ in range(total_batches):
@@ -308,15 +309,24 @@ class BinaryMLP:
                                                y: train_y,
                                                w: train_w})
                     epoch_loss += batch_loss
+                    
                 # monitor training
+                train_data.shuffle()
                 train_loss.append(epoch_loss/total_batches)
-                train_pre = sess.run(yy_, {x : train_data.x})
-                train_auc.append(roc_auc_score(train_data.y, train_pre))
+                train_pre = []
+                for batch in range(0, total_batches):
+                    train_x, _, _ = train_data.next_batch(batch_size)
+                    pred = sess.run(yy_, {x: train_x})
+                    train_pre.append(pred)
+                train_pre = np.concatenate(train_pre, axis=0)
+                train_auc.append(
+                    roc_auc_score(train_data.y[:total_batches*batch_size],
+                                  train_pre))
                 val_pre = sess.run(yy_, {x : val_data.x})
                 val_auc.append(roc_auc_score(val_data.y, val_pre))
                 
                 print('{:^20} | {:^20.4e} | {:^20.4f} | {:^25.4f}'
-                      .format(epoch+1, train_loss[-1],
+                      .format(epoch, train_loss[-1],
                               train_auc[-1], val_auc[-1]))
 
                 if early_stop:
@@ -325,9 +335,9 @@ class BinaryMLP:
                     if val_auc[-1] > early_stopping['auc']:
                         save_path = saver.save(sess, self.model_loc)
                         early_stopping['auc'] = val_auc[-1]
-                        early_stopping['epoch'] = epoch+1
+                        early_stopping['epoch'] = epoch
                         early_stopping['val_pre'] = val_pre
-                    elif (epoch+1 - early_stopping['epoch']) > early_stop:
+                    elif (epoch - early_stopping['epoch']) >= early_stop:
                         print(125*'-')
                         print('Validation AUC has not increased for {} epochs. ' \
                               'Achieved best validation auc score of {:.4f} ' \
@@ -339,18 +349,29 @@ class BinaryMLP:
                     save_path = saver.save(sess, self.model_loc)
                 
                 # set internal dataframe index to 0
-                train_data.shuffle()
                 
-            train_end = time.time()
-            train_pre = sess.run(yy_, {x: train_data.x})
+                epoch_end = time.time()
+                epoch_durations.append(epoch_end - epoch_start)
+
+            # get training prediction for validation, use batches to prevent
+            # allocating to much gpu memory
+            train_data.shuffle()
+            evts_per_batch = 100
+            total_batches = int(train_data.n/evts_per_batch)
+            train_pre = []
+            for batch in range(0, total_batches):
+                train_x, _, _ = train_data.next_batch(evts_per_batch)
+                pred = sess.run(yy_, {x: train_x})
+                train_pre.append(pred)
+            train_pre = np.concatenate(train_pre, axis=0)
             print(90*'-')
-            self._validation(train_pre, train_data.y,
+            self._validation(train_pre, train_data.y[:total_batches*evts_per_batch],
                              early_stopping['val_pre'], val_data.y)
-            self._plot_auc_dev(train_auc, val_auc, epochs)
+            self._plot_auc_dev(train_auc, val_auc, early_stopping['epoch'])
             self._plot_loss(train_loss)
             self.trained = True
             self._write_parameters(batch_size, keep_prob, beta,
-                                   (train_end - train_start), early_stopping)
+                                   np.mean(epoch_durations), early_stopping)
             print('Model saved in: {}'.format(save_path))
             print(90*'-')
             
@@ -457,7 +478,7 @@ class BinaryMLP:
             f.write('Batch Size: {}\n'.format(batch_size))
             f.write('Dropout: {}\n'.format(keep_prob))
             f.write('L2 Regularization: {}\n'.format(beta))
-            f.write('Training Time: {} s\n'.format(time))
+            f.write('Mean Training Time per Epoch: {} s\n'.format(time))
 
         with open('{}/NN_Info.txt'.format(self.savedir), 'r') as f:
             for line in f:
@@ -506,11 +527,11 @@ class BinaryMLP:
         
         plt.legend(loc='upper left')
         plt.xlabel('Netzwerk Ausgabe')
-        plt.ylabel('normierte Ereignisse')
+        plt.ylabel('Ereignisse (normiert)')
         if self.variables:
             plt.title(self.variables, loc='left')
         plt.title(self.name, loc='center')
-        plt.title('CMS Private Work', loc='right')
+        # plt.title('CMS Private Work', loc='right')
         
         
         plt_name = self.name + '_dist'
@@ -538,7 +559,7 @@ class BinaryMLP:
             plt.title(self.variables, loc='left')
         plt.grid(True)
         plt.title(self.name, loc='center')
-        plt.title('CMS Private Work', loc='right')
+        # plt.title('CMS Private Work', loc='right')
         plt.legend(loc='best')
         
         plt.savefig(self.savedir + '/' + plt_name + '.pdf')
@@ -549,19 +570,18 @@ class BinaryMLP:
     def _plot_loss(self, train_loss):
         """Plot loss of training and validation data.
         """
-        train_loss = np.array(train_loss)*10**6
         
         plt.plot(train_loss, label= 'Trainingsfehler', color='#1f77b4', ls='',
                  marker='^')
         plt.xlabel('Epoche')
-        plt.ylabel('Fehlerfunktion (mult. mit 10^6)')
+        plt.ylabel('Fehlerfunktion')
         
         if self.variables:
             plt.title(self.variables, loc='left')
         plt.title(self.name, loc='center')
-        plt.title('CMS Private Work', loc='right')
-        # plt.ticklabel_format(axis='y', style='sci', scilimits=(-2,2))
-        plt.legend(loc=0, frameon=False)
+        # plt.title('CMS Private Work', loc='right')
+        plt.ticklabel_format(axis='y', style='sci', scilimits=(-2,2))
+        plt.legend(loc=0)
         
         plt_name = self.name + '_loss'
         plt.savefig(self.savedir + '/' + plt_name + '.pdf')
@@ -569,21 +589,22 @@ class BinaryMLP:
         plt.savefig(self.savedir + '/' + plt_name + '.eps')
         plt.clf()
 
-    def _plot_auc_dev(self, train_auc, val_auc, nepochs):
+    def _plot_auc_dev(self, train_auc, val_auc, stop):
         """Plot ROC-AUC-Score development
         """
-        plt.plot(train_auc, color='#1f77b4', label='Training', ls='',
+        plt.plot(range(1, len(train_auc)+1), train_auc, color='#1f77b4', label='Training', ls='',
                  marker='^')
-        plt.plot(val_auc, color='#ff7f0e', label='Validierung', ls='',
+        plt.plot(range(1, len(val_auc)+1), val_auc, color='#ff7f0e', label='Validierung', ls='',
                  marker='^')
         
         # make plot nicer
         plt.xlabel('Epoche')
         plt.ylabel('ROC Integral')
+        plt.axvline(x=stop, color='r')
         if self.variables:
             plt.title(self.variables, loc='left')
         plt.title(self.name, loc='center')
-        plt.title('CMS Private Work', loc='right')
+        # plt.title('CMS Private Work', loc='right')
         plt.legend(loc='best', frameon=False)
 
         # save plot

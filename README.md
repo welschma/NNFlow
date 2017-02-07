@@ -15,7 +15,7 @@ name = 'array.npy'
 my_tree = 'tree'
 my_branches = ['branch_1', 'branch_2']
 
-conv_root_to_np(save_to, name, ntuples, tree=my_tree, branches=my_branches)
+conv_root_to_np(save_to, name, ntuples, treename=my_tree, branches=my_branches)
 ```
 If there is only one TTree in the nTuple you do not have to provide the name of the tree which should be converted.
 If you want to convert all branches of a tree, do not provide a branchlist.
@@ -61,9 +61,15 @@ import numpy as np
 from NNFlow.binary_mlp import BinaryMLP
 from NNFlow.data_frame import Dataframe
 
-train = 'my_variables/category/train.npy'
-val = 'my_variables/category/val.npy'
-test = 'my_variables/category/test.npy'
+# load numpy arrays
+train = np.load('my_variables/category/train.npy')
+val = np.load('my_variables/category/val.npy')
+test = np.load('my_variables/category/test.npy')
+
+# use DataFrame
+train = DataFrame(train)
+val = DataFrame(val)
+test = DataFrame(test)
 
 save_model_to = 'my_variables/category/models/2x100'
 hidden_layers = [100, 100] 

@@ -211,7 +211,7 @@ class GetVariables:
                     '44': (N_LL == 1 and N_TL == 1 and N_J == 4 and N_BTM == 4),
                     '53': (N_LL == 1 and N_TL == 1 and N_J == 5 and N_BTM == 3),
                     '54': (N_LL == 1 and N_TL == 1 and N_J == 5 and N_BTM >= 4),
-                    '62': (N_LL == 1 and N_TL == 1 and N_J >= 6 and N_BTM == 2),
+                    '62': (N_LL == 1 and N_TL == 1 and N_J >= 6 and N_BTM >= 2),
                     '63': (N_LL == 1 and N_TL == 1 and N_J >= 6 and N_BTM == 3),
                     '64': (N_LL == 1 and N_TL == 1 and N_J >= 6 and N_BTM >= 4),
                     'all': True}
