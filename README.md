@@ -15,12 +15,17 @@ name = 'array.npy'
 my_tree = 'tree'
 my_branches = ['branch_1', 'branch_2']
 
-conv_root_to_np(save_to, name, ntuples, treename=my_tree, branches=my_branches)
+convert_root_to_array(save_to, name, ntuples, tree=my_tree, branches=my_branches, threadFiles=-1, compressFile=True)
 ```
-If there is only one TTree in the nTuple you do not have to provide the name of the tree which should be converted.
-If you want to convert all branches of a tree, do not provide a branchlist.
+* If there is only one TTree in the nTuple you do not have to provide the name of the tree which should be converted.
+* If you want to convert all branches of a tree, do not provide a branchlist.
+* NOTE: The array the data is saved to is of type np.structure_array (https://docs.scipy.org/doc/numpy/user/basics.rec.html) while several arrays are saved into a single file in a (un)compressed .npz format.
+* The preprocessing is making use of threading by default if you give more than one branch name.
+* Furthermore, you can make use of threading for splitting the given files into thread by defining the number of files per thread via ```threadFiles```. Here, ```threadFiles=-1``` results in no additional threading.
+* In addition, you can define if you would like to have a compressed numpy byte array file or an uncompressed file via the flag ```compressFile```.
 
 NOTE: The array the data is saved to is of type np.structure_array (https://docs.scipy.org/doc/numpy/user/basics.rec.html).
+
 
 ### Preprocess numpy arrays
 Once you've converted the nTuples to numpy arrays, you have do some other preprocessing steps, like getting some specific branches from the array if you've converted everything in the nTuple.

@@ -3,9 +3,20 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from root_numpy import root2array
+import time
+from threading import Thread
+import Queue
+
+def root_to_array_helper(files, treename=None, branches=None):
+    print('*** Start conversion of ROOT tuple to numpy array ***')
+    print ('Starting with tree: {}'.format(treename))
+    arr = root2array(files, treename, branches)
+    print('*** End conversion of ROOT tuple to numpy array ***')
+    print ('Finished tree: {}'.format(treename))
 
 
-def conv_root_to_np(save_path, name, files, treename=None, branches=None):
+
+def convert_root_to_array_helper(save_path, name, files, treename=None, branches=None):
     """Convert trees in ROOT files into a numpy structured array.
 
     Arguments
@@ -20,13 +31,96 @@ def conv_root_to_np(save_path, name, files, treename=None, branches=None):
     List of branch names to include as collumns of the array. If None all
     branches will be included.    
     """
-    arr = root2array(files, treename, branches)
+    # Create empty thread list and queue
+    threads = list()
+    que = Queue.Queue()
+
+    # Create list to save numpy arrays
+    array_list =  list()
+
+    # Check if treename is list, convert if it is a string
+    if isinstance(treename, basestring):
+        treename = [treename]
+    if not isinstance(treename, (list, tuple)):
+        print('You have to provide a list of treenames instead of {}'.format(type(treename)))
+
+    for tree in treename:
+        t = Thread(target=lambda q, arg1, arg2, arg3: q.put(root_to_array_helper(arg1, arg2, arg3)), args=(que, files, tree, branches), name=tree)
+        threads.append(t)
+        t.start()
+
+    while(threads):
+        for tree_thread in threads:
+            if tree_thread.isAlive():
+                print('Thread for processing tree {} is alive.'.format(tree_thread.getName()))
+                time.sleep(0.1)
+            else:
+                print('Thread for processing tree {} is dead / finished.'.format(tree_thread.getName()))
+                #Get return value for thread
+                tree_thread.join()
+                print('Joined array for tree {}.'.format(tree_thread.getName()))
+                # Remove thread from thread list
+                threads.remove(tree_thread)
+
+    # Collect results from all threads
+    while not que.empty():
+        tmp_array = que.get()
+        array_list.append(tmp_array)
+
+    return array_list
+
+
+
+
+def convert_root_to_array(save_path, name, files, treename=None, branches=None, threadFiles=-1, compressFile=True):
+    """Convert trees in ROOT files into a numpy structured array.
+
+    Arguments
+    ---------
+    save_path (str):
+    Path to the directory the array will be saved in.
+    files (str or list(str)):
+    The name of the files that will be converted into one structured array.
+    treename (str, optional (default=None)):
+    Name of the tree to convert.
+    branches (str or list(str), optional (default=None)):
+    List of branch names to include as collumns of the array. If None all
+    branches will be included.    
+    threadFiles (int, optional (default=-1)):
+    Create a thread for each N files
+    compressFile (bool, optional (default=True)):
+    Compressing result numpy byte file
+    """
+    # Create list to save numpy arrays
+    array_list =  list()
+
+
+    if(threadFiles ==-1):
+        array_list = convert_root_to_array_helper(save_path, name, files, treename, branches)
+    else:
+        # Help function to create chunks
+        def chunks(l, n):
+            """ 
+            Yield successive n-sized chunks from l.
+            """
+            for i in xrange(0, len(l), n):
+                yield l[i:i+n]
+
+        file_list = chunks(files, threadFiles)
+	for file_entry in file_list:
+            print('*** Start processing files: {} ***'.format(file_entry))
+            tmp_array_list = convert_root_to_array_helper(save_path, name, file_entry, treename, branches)
+            print('*** End processing files: {} ***'.format(file_entry))
+            array_list.extend(tmp_array_list)
 
     if not os.path.isdir(save_path):
         os.makedirs(save_path)
 
     np_file = save_path + '/' + name
-    np.save(np_file, arr)
+    if (compressFile):
+        np.savez_compressed(np_file, *array_list)
+    else:
+        np.savez(np_file, *array_list)
 
 
 class GetVariables:
