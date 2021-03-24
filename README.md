@@ -1,4 +1,7 @@
-# NNFlow (Work In Progress)
+# Disclaimer:
+This project was started during my bachelor's thesis at a time where TensorFlow was still just released and libraries like Keras weren't included into the TensorFlow framework. Today, probbably all of this code is obsolete and shouldn't be used any more.
+
+# NNFlow (Archived)
 A simple interface for Google's TensorFlow 
 
 ## Basic Workflow
